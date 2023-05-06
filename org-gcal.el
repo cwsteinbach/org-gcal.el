@@ -375,6 +375,7 @@ pair will be removed instead of set."
       t
       (if (not (org-gcal--sync-lock-expired-p))
         t
+        (warn "'org-gcal--sync-lock' has expired. Resetting.")
         (org-gcal--sync-unlock)
         nil))))
 
