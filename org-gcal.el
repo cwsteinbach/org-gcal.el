@@ -288,8 +288,17 @@ entries."
   :group 'org-gcal
   :type 'string)
 
+(defcustom org-gcal-sync-lock-expire nil
+  "\
+When non-nil, represents the time in seconds past which the sync lock will expire."
+  :group 'org-gcal
+  :type 'integer)
+
 (defvar org-gcal--sync-lock nil
   "Set if a sync function is running.")
+
+(defvar org-gcal--sync-lock-time nil
+  "Records the time when the currently running sync function started.")
 
 (defvar org-gcal-token-plist nil
   "Token plist.")
@@ -343,37 +352,63 @@ expression in ‘setf’.  In that case, if REMOVE? is non-nil, the key-value
 pair will be removed instead of set."
   `(alist-get ,key org-gcal--sync-tokens nil ,remove? #'equal))
 
+(defun org-gcal--sync-lock ()
+  "Activate sync lock."
+  (setq org-gcal--sync-lock t)
+  (setq org-gcal--sync-lock-time (time-convert (current-time) 'integer)))
+
+(defun org-gcal--sync-unlock ()
+  "Deactivate sync lock in case of failed sync."
+  (interactive)
+  (setq org-gcal--sync-lock nil)
+  (setq org-gcal--sync-lock-time nil))
+
+(defun org-gcal--sync-lock-expired-p ()
+  "When sync is locked and org-gcal-sync-lock-expire is set, return true if the lock has expired."
+  (< org-gcal-gcal-sync-lock-expire (- (time-convert (current-time) 'integer) org-gcal--sync-lock-time)))
+
+(defun org-gcal--sync-locked-p ()
+  "Return true if the sync is locked."
+  (if (not org-gcal--sync-lock)
+    nil
+    (if (not org-gcal-sync-lock-expire)
+      t
+      (if (not (org-gcal--sync-lock-expired-p))
+        t
+        (org-gcal--sync-unlock)
+        nil))))
+
 ;;;###autoload
 (defun org-gcal-sync (&optional skip-export silent)
   "Import events from calendars.
 Export the ones to the calendar if unless
 SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
   (interactive)
-  (when org-gcal--sync-lock
+  (when (org-gcal--sync-locked-p)
     (user-error "org-gcal sync locked. If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again."))
   (org-gcal--sync-lock)
   (org-generic-id-update-id-locations org-gcal-entry-id-property)
   (when org-gcal-auto-archive
     (dolist (i org-gcal-fetch-file-alist)
       (with-current-buffer
-          (find-file-noselect (cdr i))
+        (find-file-noselect (cdr i))
         (org-gcal--archive-old-event))))
   (let ((up-time (org-gcal--up-time))
-        (down-time (org-gcal--down-time)))
+         (down-time (org-gcal--down-time)))
     (deferred:try
       (deferred:$
         (deferred:loop org-gcal-fetch-file-alist
           (lambda (calendar-id-file)
             (deferred:$
               (org-gcal--sync-calendar calendar-id-file skip-export silent
-                                       up-time down-time)
+                up-time down-time)
               (deferred:succeed nil)
               (deferred:nextc it
                 (lambda (_)
                   (org-gcal--notify "Completed event fetching ."
-                                    (concat "Events fetched into\n"
-                                            (cdr calendar-id-file))
-                                    silent)
+                    (concat "Events fetched into\n"
+                      (cdr calendar-id-file))
+                    silent)
                   (deferred:succeed nil))))))
         ;; After syncing new events to Org, sync existing events in Org.
         (deferred:nextc it
@@ -381,13 +416,13 @@ SKIP-EXPORT.  Set SILENT to non-nil to inhibit notifications."
             (org-generic-id-update-id-locations org-gcal-entry-id-property)
             (when t
               (mapc
-               (lambda (file)
-                 (with-current-buffer (find-file-noselect file 'nowarn)
-                   (org-with-wide-buffer
-                    (org-gcal--sync-unlock)
-                    (org-gcal-sync-buffer skip-export silent 'filter-time
-                                          'filter-managed))))
-               (org-generic-id-files))))))
+                (lambda (file)
+                  (with-current-buffer (find-file-noselect file 'nowarn)
+                    (org-with-wide-buffer
+                      (org-gcal--sync-unlock)
+                      (org-gcal-sync-buffer skip-export silent 'filter-time
+                        'filter-managed))))
+                (org-generic-id-files))))))
       :finally
       (lambda ()
         (org-gcal--sync-unlock)))))
@@ -756,19 +791,10 @@ have been moved from the default fetch file.  CALENDAR-ID is defined in
               (message "org-gcal-sync: error: %s" err))))))
     (deferred:succeed nil)))
 
-(defun org-gcal--sync-lock ()
-  "Activate sync lock."
-  (setq org-gcal--sync-lock t))
-
-(defun org-gcal--sync-unlock ()
-  "Deactivate sync lock in case of failed sync."
-  (interactive)
-  (setq org-gcal--sync-lock nil))
-
 (defun org-gcal--sync-get-update-existing ()
   "Obtain value of ‘org-gcal-managed-post-at-point-update-existing’ for syncs."
   (if (equal org-gcal-managed-post-at-point-update-existing 'prompt)
-      'never-push
+    'never-push
     org-gcal-managed-post-at-point-update-existing))
 
 ;;;###autoload
@@ -790,7 +816,7 @@ Set FILTER-DATE to only update events scheduled for later than
 Set FILTER-MAANGED to only update events with ‘org-gcal-managed-property’ set
 to “org”."
   (interactive)
-  (when org-gcal--sync-lock
+  (when (org-gcal--sync-locked-p)
     (user-error "org-gcal sync locked. If a previous sync has failed, call ‘org-gcal--sync-unlock’ to reset the lock and try again."))
   (org-gcal--sync-lock)
   (let*
