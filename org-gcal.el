@@ -368,16 +368,15 @@ pair will be removed instead of set."
   (< org-gcal-sync-lock-expire (- (time-convert (current-time) 'integer) org-gcal--sync-lock-time)))
 
 (defun org-gcal--sync-locked-p ()
-  "Return true if the sync is locked."
-  (if (not org-gcal--sync-lock)
-    nil
-    (if (not org-gcal-sync-lock-expire)
-      t
-      (if (not (org-gcal--sync-lock-expired-p))
-        t
-        (warn "'org-gcal--sync-lock' has expired. Resetting.")
-        (org-gcal--sync-unlock)
-        nil))))
+  "Return true if the sync is locked. Return nil if sync is unlocked or lock has expired."
+  (cond
+    ((not org-gcal--sync-lock) nil)
+    ((not org-gcal-sync-lock-expire) t)
+    ((not (org-gcal--sync-lock-expired-p)) t)
+    (t (progn
+         (warn "'org-gcal--sync-lock' has expired. Resetting.")
+         (org-gcal--sync-unlock)
+         nil))))
 
 ;;;###autoload
 (defun org-gcal-sync (&optional skip-export silent)
