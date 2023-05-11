@@ -376,6 +376,12 @@ If you would like to customize the contents of event entries (for example, to ad
   (add-hook 'org-gcal-after-update-entry-functions #'my-org-gcal-set-effort)
 #+END_SRC
 
+** Setting an expiration time for the sync lock
+
+Sometimes the sync operation will fail without resetting the sync lock. If you would like org-gcal to automatically
+reset the lock after failed operations you can set the custom variable =org-gcal-sync-lock-time= to an integer value
+representing the number of seconds to wait before resetting the lock after a failed operation.
+
 * Troubleshooting
 ** Debugging
 

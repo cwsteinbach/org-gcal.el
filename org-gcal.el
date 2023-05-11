@@ -368,7 +368,7 @@ pair will be removed instead of set."
   (< org-gcal-sync-lock-expire (- (time-convert (current-time) 'integer) org-gcal--sync-lock-time)))
 
 (defun org-gcal--sync-locked-p ()
-  "Return true if the sync is locked. Return nil if sync is unlocked or lock has expired."
+  "Return true if the sync is locked. Return nil if sync is unlocked or the lock has expired."
   (cond
     ((not org-gcal--sync-lock) nil)
     ((not org-gcal-sync-lock-expire) t)
